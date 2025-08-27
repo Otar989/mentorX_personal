@@ -1,15 +1,50 @@
-import OpenAI from 'openai';
-
 /**
  * OpenAI service for MentorX platform
  * Handles AI course generation, chat completion, voice transcription, and real-time voice tutoring
+ * Uses backend API instead of direct OpenAI client calls for security
  */
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true, // Required for client-side usage in React
-});
+/**
+ * Helper function to make API calls to our backend OpenAI endpoint
+ */
+async function callOpenAIAPI(messages, options = {}) {
+  const {
+    model = 'gpt-4',
+    maxTokens = 4000,
+    temperature = 0.7,
+    stream = false
+  } = options;
+
+  try {
+    const response = await fetch('/api/openai', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages,
+        model,
+        maxTokens,
+        temperature,
+        stream
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'API request failed');
+    }
+
+    if (stream) {
+      return response; // Return response for streaming
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('OpenAI API call failed:', error);
+    throw error;
+  }
+}
 
 /**
  * AI Course Generation Service
@@ -21,64 +56,46 @@ export class AIContentGeneratorService {
    */
   async generateCourseOutline(prompt) {
     try {
-      const response = await openai?.chat?.completions?.create({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: `You are an expert course creator for MentorX learning platform. Generate comprehensive course outlines with structured lessons. Always respond in JSON format with the exact structure requested.`
-          },
-          {
-            role: 'user',
-            content: `Create a detailed course outline for: ${prompt}. 
-            Include:
-            - Course title, description, level (beginner/intermediate/advanced), duration, tags
-            - At least 5-8 lessons with titles, descriptions, types, and estimated durations
-            - Learning objectives and prerequisites`
-          }
-        ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'course_outline_response',
-            schema: {
-              type: 'object',
-              properties: {
-                title: { type: 'string' },
-                description: { type: 'string' },
-                level: { type: 'string', enum: ['beginner', 'intermediate', 'advanced', 'expert'] },
-                duration_minutes: { type: 'number' },
-                tags: { type: 'array', items: { type: 'string' } },
-                learning_objectives: { type: 'array', items: { type: 'string' } },
-                prerequisites: { type: 'array', items: { type: 'string' } },
-                lessons: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      title: { type: 'string' },
-                      description: { type: 'string' },
-                      type: { type: 'string', enum: ['video', 'text', 'quiz', 'assignment', 'live_session'] },
-                      duration_minutes: { type: 'number' },
-                      content_outline: { type: 'string' }
-                    },
-                    required: ['title', 'description', 'type', 'duration_minutes', 'content_outline']
-                  }
-                }
-              },
-              required: ['title', 'description', 'level', 'duration_minutes', 'tags', 'lessons'],
-              additionalProperties: false
-            }
-          }
+      const messages = [
+        {
+          role: 'system',
+          content: `You are an expert course creator for MentorX learning platform. Generate comprehensive course outlines with structured lessons. Always respond in JSON format.`
         },
-        temperature: 0.7,
-        max_tokens: 2000
-      });
+        {
+          role: 'user',
+          content: `Create a detailed course outline for: ${prompt}. 
+          Include:
+          - Course title, description, level (beginner/intermediate/advanced), duration, tags
+          - At least 5-8 lessons with titles, descriptions, types, and estimated durations
+          - Learning objectives and prerequisites
+          
+          Respond with valid JSON in this format:
+          {
+            "title": "Course Title",
+            "description": "Course description",
+            "level": "beginner|intermediate|advanced",
+            "duration_minutes": 180,
+            "tags": ["tag1", "tag2"],
+            "learning_objectives": ["objective1", "objective2"],
+            "prerequisites": ["prereq1", "prereq2"],
+            "lessons": [
+              {
+                "title": "Lesson Title",
+                "description": "Lesson description",
+                "type": "video|text|quiz|assignment",
+                "duration_minutes": 30,
+                "content_outline": "Brief content outline"
+              }
+            ]
+          }`
+        }
+      ];
 
-      return JSON.parse(response?.choices?.[0]?.message?.content);
+      const response = await callOpenAIAPI(messages);
+      return JSON.parse(response.content);
     } catch (error) {
       console.error('Error generating course outline:', error);
-      throw new Error('Failed to generate course outline');
+      throw error;
     }
   }
 
@@ -87,111 +104,46 @@ export class AIContentGeneratorService {
    */
   async generateLessonContent(lessonTitle, lessonType, courseContext) {
     try {
-      const response = await openai?.chat?.completions?.create({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: `You are an expert content creator for MentorX. Create detailed, engaging lesson content that includes practical examples, explanations, and interactive elements.`
-          },
-          {
-            role: 'user',
-            content: `Create detailed content for lesson: "${lessonTitle}" 
-            Type: ${lessonType}
-            Course context: ${courseContext}
-            
-            Include:
-            - Structured content with clear sections
-            - Practical examples and code snippets if relevant
-            - Key concepts and explanations
-            - Interactive elements or questions
-            - Summary and next steps`
-          }
-        ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'lesson_content_response',
-            schema: {
-              type: 'object',
-              properties: {
-                content: { type: 'string' },
-                key_concepts: { type: 'array', items: { type: 'string' } },
-                examples: { type: 'array', items: { type: 'string' } },
-                practice_questions: { type: 'array', items: { type: 'string' } },
-                summary: { type: 'string' },
-                next_steps: { type: 'string' }
-              },
-              required: ['content', 'key_concepts', 'summary'],
-              additionalProperties: false
-            }
-          }
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are an expert educational content creator. Generate detailed lesson content that is engaging and pedagogically sound.'
         },
-        temperature: 0.7,
-        max_tokens: 1500
-      });
+        {
+          role: 'user',
+          content: `Generate detailed content for lesson "${lessonTitle}" of type "${lessonType}" in the context of: ${courseContext}`
+        }
+      ];
 
-      return JSON.parse(response?.choices?.[0]?.message?.content);
+      const response = await callOpenAIAPI(messages);
+      return response.content;
     } catch (error) {
       console.error('Error generating lesson content:', error);
-      throw new Error('Failed to generate lesson content');
+      throw error;
     }
   }
 
   /**
    * Generates quiz questions for a lesson
    */
-  async generateQuizQuestions(lessonTitle, content, questionCount = 5) {
+  async generateQuizQuestions(lessonContent, difficulty = 'intermediate', questionCount = 5) {
     try {
-      const response = await openai?.chat?.completions?.create({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'Generate educational quiz questions with multiple choice answers. Make them challenging but fair, testing understanding rather than memorization.'
-          },
-          {
-            role: 'user',
-            content: `Create ${questionCount} quiz questions for lesson: "${lessonTitle}"
-            Content: ${content?.substring(0, 1000)}...
-            
-            Each question should have 4 options with one correct answer.`
-          }
-        ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'quiz_questions_response',
-            schema: {
-              type: 'object',
-              properties: {
-                questions: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      question: { type: 'string' },
-                      options: { type: 'array', items: { type: 'string' } },
-                      correct_answer: { type: 'number' },
-                      explanation: { type: 'string' }
-                    },
-                    required: ['question', 'options', 'correct_answer', 'explanation']
-                  }
-                }
-              },
-              required: ['questions'],
-              additionalProperties: false
-            }
-          }
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are an expert educational assessor. Create well-crafted quiz questions based on lesson content.'
         },
-        temperature: 0.8,
-        max_tokens: 1000
-      });
+        {
+          role: 'user',
+          content: `Generate ${questionCount} ${difficulty} level quiz questions based on this lesson content: ${lessonContent}`
+        }
+      ];
 
-      return JSON.parse(response?.choices?.[0]?.message?.content);
+      const response = await callOpenAIAPI(messages);
+      return JSON.parse(response.content);
     } catch (error) {
       console.error('Error generating quiz questions:', error);
-      throw new Error('Failed to generate quiz questions');
+      throw error;
     }
   }
 }
@@ -203,32 +155,29 @@ export class AIContentGeneratorService {
 export class AIVoiceTutorService {
   constructor() {
     this.conversation = [];
-    this.currentCourse = null;
-    this.currentLesson = null;
+    this.currentContext = null;
   }
 
   /**
    * Initialize tutoring session with context
    */
   initializeSession(courseContext, lessonContext = null) {
-    this.currentCourse = courseContext;
-    this.currentLesson = lessonContext;
+    this.currentContext = {
+      course: courseContext,
+      lesson: lessonContext,
+      startTime: new Date(),
+    };
+
     this.conversation = [
       {
         role: 'system',
-        content: `You are an expert AI tutor for MentorX platform. You are helping a student with ${courseContext?.title || 'learning'}. 
-        ${lessonContext ? `Current lesson: ${lessonContext?.title}` : ''}
-        
-        Guidelines:
-        - Be encouraging and supportive
-        - Explain concepts clearly with examples
-        - Ask follow-up questions to ensure understanding
-        - Provide hints rather than direct answers when appropriate
-        - Adapt your teaching style to the student's level
-        - Keep responses concise for voice interaction
-        - Use simple language that's easy to understand when spoken`
+        content: `You are an AI tutor for the MentorX platform. You are helping with: ${courseContext?.title || 'General Learning'}. 
+        ${lessonContext ? `Current lesson: ${lessonContext.title}` : ''} 
+        Be encouraging, patient, and provide clear explanations. Ask clarifying questions when needed.`
       }
     ];
+
+    return this.currentContext;
   }
 
   /**
@@ -236,44 +185,25 @@ export class AIVoiceTutorService {
    */
   async processVoiceInput(userInput, language = 'ru') {
     try {
-      this.conversation?.push({
+      this.conversation.push({
         role: 'user',
-        content: userInput
-      });
-
-      const response = await openai?.chat?.completions?.create({
-        model: 'gpt-4',
-        messages: this.conversation,
-        temperature: 0.7,
-        max_tokens: 200, // Keep responses concise for voice
-        frequency_penalty: 0.3,
-        presence_penalty: 0.3
-      });
-
-      const aiResponse = response?.choices?.[0]?.message?.content;
-      
-      this.conversation?.push({
-        role: 'assistant',
-        content: aiResponse
-      });
-
-      // Keep conversation history manageable
-      if (this.conversation?.length > 20) {
-        this.conversation = [
-          this.conversation?.[0], // Keep system message
-          ...this.conversation?.slice(-18) // Keep last 18 messages
-        ];
-      }
-
-      return {
-        text: aiResponse,
+        content: userInput,
         timestamp: new Date(),
-        language: language
+      });
+
+      const response = await callOpenAIAPI(this.conversation);
+      
+      const tutorMessage = {
+        role: 'assistant',
+        content: response.content,
+        timestamp: new Date(),
       };
 
+      this.conversation.push(tutorMessage);
+      return tutorMessage;
     } catch (error) {
       console.error('Error processing voice input:', error);
-      throw new Error('Failed to process voice input');
+      throw error;
     }
   }
 
@@ -282,37 +212,48 @@ export class AIVoiceTutorService {
    */
   async *streamResponse(userInput, onChunk) {
     try {
-      this.conversation?.push({
+      this.conversation.push({
         role: 'user',
-        content: userInput
+        content: userInput,
+        timestamp: new Date(),
       });
 
-      const stream = await openai?.chat?.completions?.create({
-        model: 'gpt-4',
-        messages: this.conversation,
-        stream: true,
-        temperature: 0.7,
-        max_tokens: 200
-      });
-
-      let fullResponse = '';
+      const response = await callOpenAIAPI(this.conversation, { stream: true });
       
-      for await (const chunk of stream) {
-        const content = chunk?.choices?.[0]?.delta?.content || '';
-        if (content) {
-          fullResponse += content;
-          if (onChunk) {
-            onChunk(content);
-          }
-          yield content;
-        }
+      if (!response.body) {
+        throw new Error('No response body for streaming');
       }
 
-      this.conversation?.push({
-        role: 'assistant',
-        content: fullResponse
-      });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              return;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                if (onChunk) onChunk(parsed.content);
+                yield parsed.content;
+              }
+            } catch (e) {
+              // Ignore malformed JSON
+            }
+          }
+        }
+      }
     } catch (error) {
       console.error('Error in streaming response:', error);
       throw error;
@@ -324,37 +265,26 @@ export class AIVoiceTutorService {
    */
   async getContextualHelp(topic, difficulty = 'beginner') {
     try {
-      const helpPrompt = `The student needs help with: ${topic}
-      ${this.currentLesson ? `Current lesson context: ${this.currentLesson?.title}` : ''}
-      Difficulty level: ${difficulty}
-      
-      Provide a helpful explanation with examples.`;
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are a helpful AI tutor. Provide clear, concise help on the requested topic.'
+        },
+        {
+          role: 'user',
+          content: `Provide ${difficulty} level help on: ${topic}`
+        }
+      ];
 
-      const response = await openai?.chat?.completions?.create({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful tutor. Provide clear, concise explanations with practical examples.'
-          },
-          {
-            role: 'user',
-            content: helpPrompt
-          }
-        ],
-        temperature: 0.6,
-        max_tokens: 300
-      });
-
+      const response = await callOpenAIAPI(messages);
       return {
-        content: response?.choices?.[0]?.message?.content,
-        topic: topic,
-        timestamp: new Date()
+        content: response.content,
+        timestamp: new Date(),
+        topic
       };
-
     } catch (error) {
       console.error('Error getting contextual help:', error);
-      throw new Error('Failed to get contextual help');
+      throw error;
     }
   }
 
@@ -362,25 +292,24 @@ export class AIVoiceTutorService {
    * Clear conversation history
    */
   clearConversation() {
-    if (this.conversation?.length > 0) {
-      this.conversation = [this.conversation?.[0]]; // Keep only system message
-    }
+    this.conversation = this.conversation.filter(msg => msg.role === 'system');
   }
 
   /**
    * Get conversation summary
    */
   getConversationSummary() {
-    const userMessages = this.conversation?.filter(msg => msg?.role === 'user');
-    const aiMessages = this.conversation?.filter(msg => msg?.role === 'assistant');
-    
+    const userMessages = this.conversation.filter(msg => msg.role === 'user');
+    const assistantMessages = this.conversation.filter(msg => msg.role === 'assistant');
+
     return {
-      totalMessages: this.conversation?.length - 1, // Exclude system message
-      userMessages: userMessages?.length,
-      aiMessages: aiMessages?.length,
+      totalMessages: this.conversation.length,
+      userMessages: userMessages.length,
+      assistantMessages: assistantMessages.length,
       topics: this.extractTopics(),
-      startTime: this.sessionStartTime,
-      duration: this.sessionStartTime ? Date.now() - this.sessionStartTime : 0
+      duration: this.currentContext?.startTime 
+        ? Math.floor((new Date() - this.currentContext.startTime) / 1000 / 60) 
+        : 0
     };
   }
 
@@ -412,90 +341,90 @@ export class AIVoiceTutorService {
  * Handles speech-to-text and text-to-speech functionality
  */
 export class AIAudioService {
+  constructor() {
+    this.isRecording = false;
+    this.mediaRecorder = null;
+    this.audioChunks = [];
+  }
+
   /**
-   * Transcribe audio to text using OpenAI Whisper
+   * Start recording audio from microphone
    */
-  async transcribeAudio(audioBlob) {
+  async startRecording() {
     try {
-      const formData = new FormData();
-      formData?.append('file', audioBlob, 'audio.webm');
-      formData?.append('model', 'whisper-1');
-      formData?.append('language', 'ru'); // Default to Russian, can be made configurable
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.mediaRecorder = new MediaRecorder(stream);
+      this.audioChunks = [];
 
-      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env?.VITE_OPENAI_API_KEY}`,
-        },
-        body: formData
-      });
+      this.mediaRecorder.ondataavailable = (event) => {
+        this.audioChunks.push(event.data);
+      };
 
-      const data = await response?.json();
-      return data?.text;
+      this.mediaRecorder.start();
+      this.isRecording = true;
 
+      return { success: true, message: 'Recording started' };
     } catch (error) {
-      console.error('Error transcribing audio:', error);
-      throw new Error('Failed to transcribe audio');
+      console.error('Error starting recording:', error);
+      throw error;
     }
   }
 
   /**
-   * Convert text to speech (using browser's speech synthesis)
-   * Note: OpenAI's TTS API requires backend proxy for security
+   * Stop recording and return audio blob
    */
-  async textToSpeech(text, language = 'ru-RU', rate = 1.0, pitch = 1.0) {
+  async stopRecording() {
     return new Promise((resolve, reject) => {
-      try {
-        if (!window.speechSynthesis) {
-          throw new Error('Speech synthesis not supported');
-        }
-
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = language;
-        utterance.rate = rate;
-        utterance.pitch = pitch;
-        
-        utterance.onend = () => resolve();
-        utterance.onerror = (error) => reject(error);
-        
-        window.speechSynthesis.speak(utterance);
-      } catch (error) {
-        console.error('Error in text to speech:', error);
-        reject(error);
+      if (!this.mediaRecorder || !this.isRecording) {
+        reject(new Error('No active recording'));
+        return;
       }
+
+      this.mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+        this.isRecording = false;
+        this.audioChunks = [];
+
+        // Stop all tracks
+        this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+
+        resolve(audioBlob);
+      };
+
+      this.mediaRecorder.stop();
     });
   }
 
   /**
-   * Start continuous speech recognition
+   * Convert speech to text using browser's SpeechRecognition API
    */
   startSpeechRecognition(onResult, onError, language = 'ru-RU') {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      throw new Error('Speech recognition not supported');
+      onError(new Error('Speech recognition not supported'));
+      return null;
     }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
-    
+
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = language;
-    recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
       let finalTranscript = '';
       let interimTranscript = '';
 
-      for (let i = event?.resultIndex; i < event?.results?.length; i++) {
-        const transcript = event?.results?.[i]?.[0]?.transcript;
-        if (event?.results?.[i]?.isFinal) {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
           finalTranscript += transcript;
         } else {
           interimTranscript += transcript;
         }
       }
 
-      onResult({ final: finalTranscript, interim: interimTranscript });
+      onResult({ finalTranscript, interimTranscript });
     };
 
     recognition.onerror = onError;
@@ -503,12 +432,35 @@ export class AIAudioService {
     recognition?.start();
     return recognition;
   }
+
+  /**
+   * Convert text to speech using browser's SpeechSynthesis API
+   */
+  speak(text, options = {}) {
+    const {
+      lang = 'ru-RU',
+      rate = 1.0,
+      pitch = 1.0,
+      volume = 1.0
+    } = options;
+
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang;
+      utterance.rate = rate;
+      utterance.pitch = pitch;
+      utterance.volume = volume;
+
+      speechSynthesis.speak(utterance);
+      return utterance;
+    } else {
+      console.warn('Speech synthesis not supported');
+      return null;
+    }
+  }
 }
 
 // Export service instances
 export const aiContentGenerator = new AIContentGeneratorService();
 export const aiVoiceTutor = new AIVoiceTutorService();
 export const aiAudioService = new AIAudioService();
-
-// Export OpenAI client for advanced use cases
-export { openai };
