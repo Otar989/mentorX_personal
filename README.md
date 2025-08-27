@@ -1,6 +1,10 @@
-# React
+# MentorX Learning Platform
 
-A modern React-based project utilizing the latest frontend technologies and tools for building responsive web applications.
+A modern React-based learning platform utilizing the latest frontend technologies and tools for building responsive educational web applications.
+
+## 🌐 Live Demo
+
+**Site URL:** [https://mentorx9283back.builtwithrocket.new](https://mentorx9283back.builtwithrocket.new)
 
 ## 🚀 Features
 

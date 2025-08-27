@@ -206,6 +206,25 @@ const SiteMapComponent = () => {
           <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
             {content?.[currentLang]?.description}
           </p>
+          
+          {/* Site URL Info */}
+          <div className="mt-6 glass-panel border border-glass-border backdrop-blur-20 rounded-2xl p-4 max-w-2xl mx-auto">
+            <div className="flex items-center gap-3 justify-center">
+              <Icon name="Globe" size={18} className="text-primary" />
+              <span className="text-sm text-muted-foreground">
+                {currentLang === 'ru' ? 'Ссылка на сайт:' : 'Site URL:'}
+              </span>
+              <a 
+                href="https://mentorx9283back.builtwithrocket.new" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:text-primary/80 transition-colors text-sm font-medium"
+              >
+                mentorx9283back.builtwithrocket.new
+              </a>
+              <Icon name="ExternalLink" size={14} className="text-primary" />
+            </div>
+          </div>
         </motion.div>
 
         {/* Search Bar */}
