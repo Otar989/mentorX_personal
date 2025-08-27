@@ -2,6 +2,44 @@ import { supabase } from '../lib/supabase';
 import { aiContentGenerator } from './openaiService';
 
 /**
+ * Helper function to make API calls to our backend OpenAI endpoint
+ */
+async function callOpenAIAPI(messages, options = {}) {
+  const {
+    model = 'gpt-4',
+    maxTokens = 4000,
+    temperature = 0.7,
+    stream = false
+  } = options;
+
+  try {
+    const response = await fetch('/api/openai', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages,
+        model,
+        maxTokens,
+        temperature,
+        stream
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'API request failed');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('OpenAI API call failed:', error);
+    throw error;
+  }
+}
+
+/**
  * AI Course Management Service
  * Integrates OpenAI course generation with Supabase database
  */
@@ -226,56 +264,40 @@ export class AICourseService {
    */
   async generateCourseSuggestions(userInterests, skillLevel = 'beginner', count = 5) {
     try {
-      const prompt = `Generate ${count} course suggestions for someone interested in: ${userInterests?.join(', ')}.
-      Skill level: ${skillLevel}.
-      
-      Each suggestion should include a compelling title, description, estimated duration, and key topics.`;
-
-      const response = await aiContentGenerator?.openai?.chat?.completions?.create({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a course recommendation expert. Generate engaging, practical course suggestions.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'course_suggestions_response',
-            schema: {
-              type: 'object',
-              properties: {
-                suggestions: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      title: { type: 'string' },
-                      description: { type: 'string' },
-                      duration_hours: { type: 'number' },
-                      key_topics: { type: 'array', items: { type: 'string' } },
-                      difficulty: { type: 'string' },
-                      target_audience: { type: 'string' }
-                    },
-                    required: ['title', 'description', 'duration_hours', 'key_topics']
-                  }
-                }
-              },
-              required: ['suggestions'],
-              additionalProperties: false
-            }
-          }
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are a course recommendation expert. Generate engaging, practical course suggestions. Respond with valid JSON containing an array of course suggestions.'
         },
+        {
+          role: 'user',
+          content: `Generate ${count} course suggestions for someone interested in: ${userInterests?.join(', ')}.
+          Skill level: ${skillLevel}.
+          
+          Each suggestion should include a compelling title, description, estimated duration, and key topics.
+          
+          Respond with JSON in this format:
+          {
+            "suggestions": [
+              {
+                "title": "Course Title",
+                "description": "Course description",
+                "duration_hours": 10,
+                "key_topics": ["topic1", "topic2"],
+                "difficulty": "beginner|intermediate|advanced",
+                "target_audience": "target audience description"
+              }
+            ]
+          }`
+        }
+      ];
+
+      const response = await callOpenAIAPI(messages, {
         temperature: 0.8,
-        max_tokens: 1500
+        maxTokens: 1500
       });
 
-      const data = JSON.parse(response?.choices?.[0]?.message?.content);
+      const data = JSON.parse(response.content);
       return data?.suggestions || [];
 
     } catch (error) {
@@ -328,36 +350,34 @@ export class AICourseService {
    */
   async generateCourseInsights(courseData) {
     try {
-      const prompt = `Analyze this course data and provide insights:
-      
-      Course: ${courseData?.title}
-      Enrollments: ${courseData?.enrollments?.length || 0}
-      Lessons: ${courseData?.lessons?.length || 0}
-      Total Duration: ${courseData?.duration_minutes || 0} minutes
-      
-      Provide insights on:
-      - Course performance
-      - Student engagement
-      - Areas for improvement
-      - Recommendations`;
+      const messages = [
+        {
+          role: 'system',
+          content: 'You are an educational analytics expert. Provide actionable insights based on course data.'
+        },
+        {
+          role: 'user',
+          content: `Analyze this course data and provide insights:
+          
+          Course: ${courseData?.title}
+          Enrollments: ${courseData?.enrollments?.length || 0}
+          Lessons: ${courseData?.lessons?.length || 0}
+          Total Duration: ${courseData?.duration_minutes || 0} minutes
+          
+          Provide insights on:
+          - Course performance
+          - Student engagement
+          - Areas for improvement
+          - Recommendations`
+        }
+      ];
 
-      const response = await aiContentGenerator?.openai?.chat?.completions?.create({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an educational analytics expert. Provide actionable insights based on course data.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
+      const response = await callOpenAIAPI(messages, {
         temperature: 0.6,
-        max_tokens: 500
+        maxTokens: 500
       });
 
-      return response?.choices?.[0]?.message?.content;
+      return response.content;
     } catch (error) {
       console.error('Error generating insights:', error);
       return 'Unable to generate insights at this time.';
