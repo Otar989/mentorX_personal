@@ -144,6 +144,39 @@ const HelpPage = () => {
             </div>
           </motion.div>
 
+          {/* Platform Information */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+            className="mb-12"
+          >
+            <h2 className="text-2xl font-semibold text-onBackground mb-6">Platform Information</h2>
+            <div className="glass-panel border border-glass-border backdrop-blur-20 rounded-2xl p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 glass-subtle rounded-xl flex items-center justify-center">
+                  <Icon name="Globe" size={24} className="text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-onBackground">Site URL</h3>
+                  <p className="text-sm text-muted-foreground">Access the MentorX platform</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-muted/20 rounded-xl">
+                <span className="text-sm text-muted-foreground">URL:</span>
+                <a 
+                  href="https://mentorx9283back.builtwithrocket.new" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-primary hover:text-primary/80 transition-colors text-sm font-medium flex items-center gap-2"
+                >
+                  mentorx9283back.builtwithrocket.new
+                  <Icon name="ExternalLink" size={14} />
+                </a>
+              </div>
+            </div>
+          </motion.div>
+
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
             {/* Sidebar */}
             <motion.div
